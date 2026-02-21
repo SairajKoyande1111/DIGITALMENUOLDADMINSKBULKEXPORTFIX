@@ -82,15 +82,15 @@ export async function connectToRestaurantDatabase(mongoUri: string): Promise<mon
     // Create new connection with the properly formatted URI
     const connection = await Promise.race([
       mongoose.createConnection(finalUri, {
-        connectTimeoutMS: 5001,
-        serverSelectionTimeoutMS: 5001,
-        maxPoolSize: 3,
+        connectTimeoutMS: 15000,
+        serverSelectionTimeoutMS: 15000,
+        maxPoolSize: 5,
         minPoolSize: 1,
         // Explicitly specify the database name
         dbName: databaseName
       }),
       new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Connection timeout")), 6000)
+        setTimeout(() => reject(new Error("Connection timeout")), 20000)
       )
     ]) as mongoose.Connection;
     
@@ -438,82 +438,45 @@ export async function fetchMenuItemsFromCustomDB(connection: mongoose.Connection
       console.log(`🎯 Filtering for category "${categoryFilter}", found collections:`, collectionsToQuery.map(c => c.name));
     }
     
-    for (const collection of collectionsToQuery) {
+    // Parallel fetching for faster results
+    const fetchPromises = collectionsToQuery.map(async (collection) => {
       try {
         console.log(`🔍 Fetching items from collection: ${collection.name}`);
         
-        // First check if collection exists and has documents
-        const collectionExists = await connection.db.listCollections({ name: collection.name }).hasNext();
-        if (!collectionExists) {
-          console.warn(`⚠️ Collection ${collection.name} does not exist`);
-          continue;
-        }
-        
-        // Check document count first
-        const totalCount = await connection.db.collection(collection.name).countDocuments();
-        console.log(`📊 Collection ${collection.name} has ${totalCount} total documents`);
-        
-        if (totalCount === 0) {
-          console.log(`📭 Collection ${collection.name} is empty`);
-          continue;
-        }
-        
-        // Get all items from collection regardless of category field value
+        // Get all items from collection
         const items = await Promise.race([
           connection.db.collection(collection.name).find({}).toArray(),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Collection query timeout")), 10000)
+            setTimeout(() => reject(new Error("Collection query timeout")), 60000)
           )
         ]) as any[];
         
-        console.log(`📋 Found ${items.length} items in ${collection.name} (collection-based category system)`);
+        console.log(`📋 Found ${items.length} items in ${collection.name}`);
         
-        // Debug: Check what category values exist in this collection
-        if (items.length > 0) {
-          const categories = [...new Set(items.map(item => item.category).filter(Boolean))];
-          console.log(`📊 Category values in ${collection.name}:`, categories);
-          
-          // Special debug for potrice
-          if (collection.name === 'potrice') {
-            console.log(`🍚 POTRICE DEBUG - Sample items:`, items.slice(0, 2).map(item => ({
-              _id: item._id,
-              name: item.name,
-              category: item.category,
-              hasRequiredFields: !!(item.name && item.price)
-            })));
-          }
-        } else {
-          console.warn(`⚠️ Collection ${collection.name} returned 0 items despite having ${totalCount} documents`);
-        }
-        
-        // Transform items to standardized format
-        const transformedItems = items.map(item => {
-          return {
-            _id: item._id,
-            name: item.name || item.title || item.itemName || 'Unknown Item',
-            description: item.description || item.desc || item.details || '',
-            price: item.price || item.cost || item.amount || 0,
-            category: collection.name, // Use collection name as the category for consistency
-            isVeg: item.isVeg ?? item.veg ?? item.vegetarian ?? true,
-            image: item.image || item.imageUrl || item.photo || '',
-            restaurantId: item.restaurantId || new mongoose.Types.ObjectId(),
-            isAvailable: item.isAvailable ?? item.available ?? item.active ?? true,
-            createdAt: item.createdAt || new Date(),
-            updatedAt: item.updatedAt || new Date(),
-            __v: item.__v ?? 0,
-            originalCollection: collection.name,
-            originalData: item
-          };
-        });
-        
-        allMenuItems = allMenuItems.concat(transformedItems);
-        console.log(`📊 Added ${transformedItems.length} valid items from ${collection.name} with category "${collection.name}"`);
+        return items.map(item => ({
+          _id: item._id,
+          name: item.name || item.title || item.itemName || 'Unknown Item',
+          description: item.description || item.desc || item.details || '',
+          price: item.price || item.cost || item.amount || 0,
+          category: collection.name,
+          isVeg: item.isVeg ?? item.veg ?? item.vegetarian ?? true,
+          image: item.image || item.imageUrl || item.photo || '',
+          restaurantId: item.restaurantId || new mongoose.Types.ObjectId(),
+          isAvailable: item.isAvailable ?? item.available ?? item.active ?? true,
+          createdAt: item.createdAt || new Date(),
+          updatedAt: item.updatedAt || new Date(),
+          __v: item.__v ?? 0,
+          originalCollection: collection.name,
+          originalData: item
+        }));
       } catch (error) {
         console.error(`❌ Error fetching from collection ${collection.name}:`, error);
-        // Continue with other collections instead of failing completely
-        continue;
+        return [];
       }
-    }
+    });
+
+    const results = await Promise.all(fetchPromises);
+    allMenuItems = results.flat();
     
     console.log(`🎯 Total valid menu items found: ${allMenuItems.length}`);
     return allMenuItems;
