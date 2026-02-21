@@ -447,7 +447,7 @@ export async function fetchMenuItemsFromCustomDB(connection: mongoose.Connection
         const items = await Promise.race([
           connection.db.collection(collection.name).find({}).toArray(),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Collection query timeout")), 60000)
+            setTimeout(() => reject(new Error("Collection query timeout")), 30000)
           )
         ]) as any[];
         
@@ -475,8 +475,11 @@ export async function fetchMenuItemsFromCustomDB(connection: mongoose.Connection
       }
     });
 
-    const results = await Promise.all(fetchPromises);
-    allMenuItems = results.flat();
+    const results = await Promise.allSettled(fetchPromises);
+    allMenuItems = results
+      .filter((result): result is PromiseFulfilledResult<any[]> => result.status === 'fulfilled')
+      .map(result => result.value)
+      .flat();
     
     console.log(`🎯 Total valid menu items found: ${allMenuItems.length}`);
     return allMenuItems;
