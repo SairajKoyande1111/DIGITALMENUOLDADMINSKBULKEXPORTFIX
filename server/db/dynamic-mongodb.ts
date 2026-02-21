@@ -447,7 +447,7 @@ export async function fetchMenuItemsFromCustomDB(connection: mongoose.Connection
         const items = await Promise.race([
           connection.db.collection(collection.name).find({}).toArray(),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Collection query timeout")), 30000)
+            setTimeout(() => reject(new Error(`Collection "${collection.name}" query timeout`)), 15000)
           )
         ]) as any[];
         
@@ -470,7 +470,7 @@ export async function fetchMenuItemsFromCustomDB(connection: mongoose.Connection
           originalData: item
         }));
       } catch (error) {
-        console.error(`❌ Error fetching from collection ${collection.name}:`, error);
+        console.error(`❌ Error fetching from collection ${collection.name}:`, error.message);
         return [];
       }
     });
@@ -480,6 +480,36 @@ export async function fetchMenuItemsFromCustomDB(connection: mongoose.Connection
       .filter((result): result is PromiseFulfilledResult<any[]> => result.status === 'fulfilled')
       .map(result => result.value)
       .flat();
+    
+    // Fallback: If no items found but collections exist, try a very quick second pass for just the first few items
+    if (allMenuItems.length === 0 && menuCollections.length > 0 && !categoryFilter) {
+      console.log('⚠️ No items found in first pass, attempting quick fallback for first 5 collections');
+      const fallbackPromises = menuCollections.slice(0, 5).map(async (collection) => {
+        try {
+          const items = await connection.db.collection(collection.name).find({}).limit(5).toArray();
+          return items.map(item => ({
+            _id: item._id,
+            name: item.name || item.title || item.itemName || 'Unknown Item',
+            description: item.description || item.desc || item.details || '',
+            price: item.price || item.cost || item.amount || 0,
+            category: collection.name,
+            isVeg: item.isVeg ?? item.veg ?? item.vegetarian ?? true,
+            image: item.image || item.imageUrl || item.photo || '',
+            restaurantId: item.restaurantId || new mongoose.Types.ObjectId(),
+            isAvailable: item.isAvailable ?? item.available ?? item.active ?? true,
+            createdAt: item.createdAt || new Date(),
+            updatedAt: item.updatedAt || new Date(),
+            __v: item.__v ?? 0,
+            originalCollection: collection.name
+          }));
+        } catch (e) { return []; }
+      });
+      const fallbackResults = await Promise.allSettled(fallbackPromises);
+      allMenuItems = fallbackResults
+        .filter((result): result is PromiseFulfilledResult<any[]> => result.status === 'fulfilled')
+        .map(result => result.value)
+        .flat();
+    }
     
     console.log(`🎯 Total valid menu items found: ${allMenuItems.length}`);
     return allMenuItems;

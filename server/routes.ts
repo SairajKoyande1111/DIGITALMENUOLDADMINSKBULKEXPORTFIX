@@ -1125,7 +1125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const menuItems = await Promise.race([
             fetchPromise,
             new Promise((_, reject) => 
-              setTimeout(() => reject(new Error("Database fetch timeout")), 45000)
+              setTimeout(() => reject(new Error("Database fetch timeout")), 120000)
             )
           ]);
           
