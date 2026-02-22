@@ -334,6 +334,13 @@ else if (restaurant?.mongoUri && menuItems && menuItems.length > 0) {
     // If there's an image file, upload it first
     if (imageFile) {
       try {
+        console.log("📤 Starting image upload...", {
+          fileName: imageFile.name,
+          fileSize: imageFile.size,
+          fileType: imageFile.mimetype,
+          restaurantId
+        });
+
         const token = localStorage.getItem("adminToken");
         const uploadFormData = new FormData();
         uploadFormData.append('image', imageFile);
@@ -347,17 +354,23 @@ else if (restaurant?.mongoUri && menuItems && menuItems.length > 0) {
           body: uploadFormData,
         });
         
+        console.log("📥 Upload response status:", response.status);
+        
         if (response.ok) {
           const result = await response.json();
+          console.log("✅ Upload successful. Result:", result);
           // Store the Cloudinary URL directly in the image field
           finalFormData.image = result.url;
         } else {
-          throw new Error('Image upload failed');
+          const errorData = await response.json().catch(() => ({}));
+          console.error("❌ Upload failed on server:", errorData);
+          throw new Error(errorData.message || 'Image upload failed');
         }
-      } catch (error) {
+      } catch (error: any) {
+        console.error("❌ Catch block error during upload:", error);
         toast({
           title: "Error",
-          description: "Failed to upload image. Please try again.",
+          description: error.message || "Failed to upload image. Please try again.",
           variant: "destructive",
         });
         return;

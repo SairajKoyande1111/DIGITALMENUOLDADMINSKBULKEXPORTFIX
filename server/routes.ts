@@ -78,18 +78,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Endpoint for Cloudinary image upload
   app.post("/api/admin/upload-image", authenticateAdmin, cloudinaryUpload.single('image'), async (req: any, res) => {
     try {
+      console.log("📸 Image upload request received");
+      console.log("📁 File info:", req.file ? {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        path: req.file.path
+      } : "No file");
+      
       if (!req.file) {
+        console.error("❌ No file found in request");
         return res.status(400).json({ message: "No file uploaded" });
       }
       
       // req.file.path contains the Cloudinary URL when using multer-storage-cloudinary
+      console.log("✅ Image uploaded to Cloudinary successfully:", req.file.path);
       res.json({ 
         url: req.file.path,
         success: true 
       });
     } catch (error: any) {
-      console.error("Cloudinary upload error:", error);
-      res.status(500).json({ message: "Failed to upload image to Cloudinary" });
+      console.error("❌ Cloudinary upload error details:", {
+        message: error.message,
+        stack: error.stack,
+        cloudinaryError: error.cloudinaryError || error
+      });
+      res.status(500).json({ 
+        message: "Failed to upload image to Cloudinary",
+        error: error.message 
+      });
     }
   });
 
@@ -1591,61 +1608,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error processing bulk import:', error);
       res.status(500).json({ message: "Failed to process import" });
-    }
-  });
-
-  // Image Upload Route - Return base64 to embed directly in menu item
-  app.post("/api/admin/upload-image", authenticateAdmin, upload.single('image'), async (req, res) => {
-    try {
-      const file = req.file;
-
-      if (!file) {
-        return res.status(400).json({ message: "No image file uploaded" });
-      }
-
-      // Validate file type - accept standard images and raw formats
-      const isImageFile = file.mimetype.startsWith('image/');
-      const rawFormats = ['.arw', '.cr2', '.nef', '.raf', '.rw2', '.dng', '.raw'];
-      const isRawFormat = rawFormats.some(ext => file.originalname.toLowerCase().endsWith(ext));
-
-      if (!isImageFile && !isRawFormat) {
-        return res.status(400).json({ message: "Only image files are allowed" });
-      }
-
-      // Validate file size (200KB limit)
-      const MAX_FILE_SIZE = 200 * 1024;
-      if (file.size > MAX_FILE_SIZE) {
-        // Clean up uploaded temp file
-        try { fs.unlinkSync(file.path); } catch (e) {}
-        return res.status(400).json({ message: "Image size must be less than 200KB" });
-      }
-
-      // Read file and convert to base64
-      const fileData = fs.readFileSync(file.path);
-      const base64Data = fileData.toString('base64');
-      const mimeType = file.mimetype || 'image/jpeg';
-
-      // Clean up uploaded temp file
-      try {
-        fs.unlinkSync(file.path);
-      } catch (cleanupError) {
-        console.warn('Failed to cleanup uploaded file:', cleanupError);
-      }
-
-      // Return base64 string that will be embedded in the menu item document
-      const base64String = `data:${mimeType};base64,${base64Data}`;
-      
-      console.log(`✅ Image converted to base64 (${(base64String.length / 1024).toFixed(2)}KB)`);
-      res.json({ 
-        success: true,
-        base64: base64String,
-        mimeType: mimeType,
-        message: "Image converted to base64 successfully"
-      });
-
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      res.status(500).json({ message: "Failed to upload image", error: error.message });
     }
   });
 
