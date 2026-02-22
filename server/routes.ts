@@ -31,6 +31,33 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+async function sendOTPEmail(email: string, otp: string) {
+  try {
+    if (!transporter) {
+      transporter = createTransporter();
+    }
+    
+    const emailUser = process.env.EMAIL_USER?.trim();
+    if (!emailUser) {
+      throw new Error('EMAIL_USER environment variable is not set');
+    }
+    
+    const mailOptions = {
+      from: emailUser,
+      to: email,
+      subject: 'Your Login OTP',
+      text: `Your One-Time Password for login is: ${otp}. It will expire in 10 minutes.`,
+      html: `<p>Your One-Time Password for login is: <strong>${otp}</strong>.</p><p>It will expire in 10 minutes.</p>`,
+    };
+    
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ OTP email sent successfully to: ${email}`);
+  } catch (error) {
+    console.error(`❌ Failed to send OTP email: ${error instanceof Error ? error.message : error}`);
+    throw error;
+  }
+}
+
 // Configure Cloudinary storage for multer
 const cloudinaryStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
