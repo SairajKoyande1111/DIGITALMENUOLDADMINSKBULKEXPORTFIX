@@ -278,11 +278,14 @@ else if (restaurant?.mongoUri && menuItems && menuItems.length > 0) {
   const bulkDeleteAllMutation = useMutation({
     mutationFn: async () => {
       const token = localStorage.getItem("adminToken");
-      const response = await fetch(`/api/admin/restaurants/${restaurantId}/menu-items-all`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await fetch(`/api/admin/restaurants/${restaurantId}/menu-items-clear`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
-      if (!response.ok) throw new Error("Failed to delete menu items");
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Failed to delete menu items");
+      }
       return await response.json();
     },
     onSuccess: (data) => {

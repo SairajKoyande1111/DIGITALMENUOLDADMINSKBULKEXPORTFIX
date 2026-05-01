@@ -1406,8 +1406,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Bulk Delete All Menu Items for a Restaurant
-  app.delete("/api/admin/restaurants/:restaurantId/menu-items-all", authenticateAdmin, async (req, res) => {
+  // Bulk Delete All Menu Items for a Restaurant (POST used to avoid Vite middleware interception of DELETE)
+  app.post("/api/admin/restaurants/:restaurantId/menu-items-clear", authenticateAdmin, async (req, res) => {
     try {
       const { restaurantId } = req.params;
 
