@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -271,6 +272,25 @@ else if (restaurant?.mongoUri && menuItems && menuItems.length > 0) {
         description: error.message || "Failed to refresh categories",
         variant: "destructive",
       });
+    },
+  });
+
+  const bulkDeleteAllMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem("adminToken");
+      const response = await fetch(`/api/admin/restaurants/${restaurantId}/menu-items-all`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to delete menu items");
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "All Menu Items Deleted", description: data.message });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/restaurants/${restaurantId}/menu-items`] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Delete Failed", description: error.message || "Failed to delete menu items", variant: "destructive" });
     },
   });
 
@@ -647,6 +667,39 @@ else if (restaurant?.mongoUri && menuItems && menuItems.length > 0) {
                 <Upload className="w-4 h-4 mr-2" />
                 <span className="truncate">Bulk Import</span>
               </Button>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="border-red-600 text-red-600 hover:bg-red-50 w-full sm:w-auto"
+                    disabled={bulkDeleteAllMutation.isPending}
+                    data-testid="button-clear-all-menu"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    <span className="truncate">
+                      {bulkDeleteAllMutation.isPending ? "Deleting..." : "Clear All Menu"}
+                    </span>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Clear All Menu Items?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete <strong>every menu item</strong> across all categories for this restaurant. This action cannot be undone. Are you sure you want to continue?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                      onClick={() => bulkDeleteAllMutation.mutate()}
+                    >
+                      Yes, Delete Everything
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
               
               <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
                 <DialogTrigger asChild>

@@ -1406,6 +1406,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk Delete All Menu Items for a Restaurant
+  app.delete("/api/admin/restaurants/:restaurantId/menu-items-all", authenticateAdmin, async (req, res) => {
+    try {
+      const { restaurantId } = req.params;
+
+      const restaurant = await Restaurant.findById(restaurantId);
+      if (!restaurant) {
+        return res.status(404).json({ message: "Restaurant not found" });
+      }
+
+      let totalDeleted = 0;
+
+      if (restaurant.mongoUri) {
+        const connection = await connectToRestaurantDatabase(restaurant.mongoUri);
+        const collections = await connection.db.listCollections().toArray();
+        for (const col of collections) {
+          const result = await connection.db.collection(col.name).deleteMany({});
+          totalDeleted += result.deletedCount;
+          console.log(`🗑️  Deleted ${result.deletedCount} items from collection: ${col.name}`);
+        }
+      } else {
+        const result = await MenuItem.deleteMany({ restaurantId });
+        totalDeleted = result.deletedCount;
+      }
+
+      console.log(`✅ Bulk delete complete for restaurant ${restaurantId}: ${totalDeleted} items removed`);
+      res.json({ success: true, message: `Deleted ${totalDeleted} menu items successfully.`, deleted: totalDeleted });
+    } catch (error) {
+      console.error("Error during bulk menu delete:", error);
+      res.status(500).json({ message: "Failed to delete menu items" });
+    }
+  });
+
   // Bulk Menu Import - Download Template
   app.get("/api/admin/restaurants/:restaurantId/menu-template", authenticateAdmin, async (req, res) => {
     try {
