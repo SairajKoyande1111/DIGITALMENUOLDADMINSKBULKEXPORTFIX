@@ -1527,7 +1527,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const worksheet = workbook.Sheets[sheetName];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-      let imported = 0;
+      let inserted = 0;
+      let updated = 0;
       let failed = 0;
       const errors: string[] = [];
 
@@ -1562,48 +1563,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
             restaurantId
           };
 
-          // Create menu item using exact collection name matching
+          // Upsert menu item using exact collection name matching (update if exists, insert if new)
           if (restaurant.mongoUri) {
-            // Use a simplified creation that directly matches collection names
             const connection = await connectToRestaurantDatabase(restaurant.mongoUri);
             const targetCollection = category; // Use category as exact collection name
-            
+
             // Verify collection exists
             const collections = await connection.db.listCollections().toArray();
             const collectionExists = collections.some(c => c.name === targetCollection);
-            
+
             if (!collectionExists) {
               throw new Error(`Collection "${targetCollection}" does not exist. Available collections: ${collections.map(c => c.name).join(', ')}`);
             }
-            
-            console.log(`Creating menu item in exact collection: ${targetCollection}`);
-            
-            const transformedData = {
-              name,
-              description,
-              price,
-              category: targetCollection, // Store exact collection name as category
-              isVeg,
-              image,
-              restaurantId: new mongoose.Types.ObjectId(restaurantId),
-              isAvailable,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              __v: 0
-            };
-            
-            await connection.db.collection(targetCollection).insertOne(transformedData);
-            console.log(`✅ Menu item created in collection: ${targetCollection}`);
-          } else {
-            // Create using regular database (if needed)
-            const newMenuItem = new MenuItem({
-              ...menuItemData,
-              restaurantId: restaurant._id
-            });
-            await newMenuItem.save();
-          }
 
-          imported++;
+            // Match by name (case-insensitive) within the same collection
+            const filter = { name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } };
+
+            const updateDoc = {
+              $set: {
+                name,
+                description,
+                price,
+                category: targetCollection,
+                isVeg,
+                image,
+                restaurantId: new mongoose.Types.ObjectId(restaurantId),
+                isAvailable,
+                updatedAt: new Date(),
+              },
+              $setOnInsert: {
+                createdAt: new Date(),
+                __v: 0,
+              }
+            };
+
+            const result = await connection.db.collection(targetCollection).updateOne(filter, updateDoc, { upsert: true });
+            if (result.upsertedCount > 0) {
+              console.log(`✅ Menu item inserted into collection: ${targetCollection} — "${name}"`);
+              inserted++;
+            } else {
+              console.log(`✅ Menu item updated in collection: ${targetCollection} — "${name}"`);
+              updated++;
+            }
+          } else {
+            // Upsert using regular database
+            const existing = await MenuItem.findOne({ name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }, restaurantId: restaurant._id });
+            await MenuItem.findOneAndUpdate(
+              { name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }, restaurantId: restaurant._id },
+              { ...menuItemData, restaurantId: restaurant._id, updatedAt: new Date() },
+              { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
+            if (existing) { updated++; } else { inserted++; }
+          }
         } catch (error: any) {
           console.error(`Error processing row ${i + 2}:`, error);
           errors.push(`Row ${i + 2}: ${error.message || 'Unknown error'}`);
@@ -1618,10 +1629,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn('Failed to cleanup uploaded file:', cleanupError);
       }
 
+      const imported = inserted + updated;
       res.json({
         success: failed === 0,
-        message: `Import completed. ${imported} items imported, ${failed} failed.`,
+        message: `Import completed. ${inserted} item(s) added, ${updated} item(s) updated, ${failed} failed.`,
         imported,
+        inserted,
+        updated,
         failed,
         errors: errors.slice(0, 10) // Limit to first 10 errors
       });

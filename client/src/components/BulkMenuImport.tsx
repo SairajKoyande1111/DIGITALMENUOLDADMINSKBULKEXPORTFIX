@@ -341,6 +341,8 @@ interface ImportResult {
   success: boolean;
   message: string;
   imported: number;
+  inserted: number;
+  updated: number;
   failed: number;
   errors?: string[];
 }
@@ -414,13 +416,13 @@ export function BulkMenuImport({ restaurantId, isOpen, onClose, onSuccess }: Bul
       if (result.success) {
         toast({
           title: "Import Successful",
-          description: `Successfully imported ${result.imported} menu items`,
+          description: `${result.inserted ?? 0} added, ${result.updated ?? 0} updated — no duplicates created.`,
         });
         onSuccess();
       } else {
         toast({
           title: "Import Completed with Errors",
-          description: `Imported ${result.imported} items, ${result.failed} failed`,
+          description: `${result.inserted ?? 0} added, ${result.updated ?? 0} updated, ${result.failed} failed`,
           variant: "destructive",
         });
       }
@@ -601,10 +603,14 @@ export function BulkMenuImport({ restaurantId, isOpen, onClose, onSuccess }: Bul
                 </CardHeader>
                 <CardContent className="pt-0">
                   <div className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div className="grid grid-cols-3 gap-3 text-sm">
                       <div className="bg-green-50 p-3 rounded-lg">
-                        <div className="text-green-800 font-medium text-xs lg:text-sm">Successfully Imported</div>
-                        <div className="text-xl lg:text-2xl font-bold text-green-600">{importResult.imported}</div>
+                        <div className="text-green-800 font-medium text-xs lg:text-sm">Newly Added</div>
+                        <div className="text-xl lg:text-2xl font-bold text-green-600">{importResult.inserted ?? 0}</div>
+                      </div>
+                      <div className="bg-blue-50 p-3 rounded-lg">
+                        <div className="text-blue-800 font-medium text-xs lg:text-sm">Updated</div>
+                        <div className="text-xl lg:text-2xl font-bold text-blue-600">{importResult.updated ?? 0}</div>
                       </div>
                       <div className="bg-red-50 p-3 rounded-lg">
                         <div className="text-red-800 font-medium text-xs lg:text-sm">Failed</div>
